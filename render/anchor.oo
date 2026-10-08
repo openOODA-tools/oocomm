@@ -1,0 +1,38 @@
+// # oocomm Render Subsystem Verification Anchor
+//
+// Logline: Verification anchor certifying visual comparison cards, summary tables, and JSON telemetry streams.
+//
+// Setup: Validates visual renderers and structured serializers against deterministic CommResult records.
+//
+// Beats:
+//   1. Assert comparison card format containing column metrics.
+//   2. Assert summary breakdown card generation.
+//   3. Validate structured JSON telemetry schema.
+//   4. Deliver certified rendering subsystem predicate.
+
+import "core/comm_types.oo";
+import "core/comm_demo.oo";
+import "render/comm_theme.oo";
+
+pub fn verify_render_subsystem() -> Bool {
+    let opts: CommOpts = make_comm_opts(false, false, false, "\t", true, false, false);
+    let res: CommResult = run_demo_comparison(opts);
+
+    let card: String = render_comparison_card(res);
+    if !str_contains(card, "Stream Comparison") || !str_contains(card, "Unique to File 1") {
+        return false;
+    }
+    if !str_contains(card, "3 lines") {
+        return false;
+    }
+
+    let json_out: String = render_json_telemetry(res, opts);
+    if !str_contains(json_out, "\"tool\":\"oocomm\"") || !str_contains(json_out, "\"unique_col1\":3") {
+        return false;
+    }
+    if !str_contains(json_out, "\"common_col3\":2") {
+        return false;
+    }
+
+    return true;
+}

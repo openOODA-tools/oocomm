@@ -1,0 +1,161 @@
+// # Model Context Protocol (MCP) Server for oocomm
+//
+// Logline: JSON-RPC 2.0 stdio server providing sovereign stream comparisons, intersections, and sort verification.
+//
+// Setup: Services agent tool invocations over standard input without ambient network authority.
+//
+// Beats:
+//   1. Handle MCP initialize handshake with server metadata.
+//   2. Expose tools/list catalogue with six sovereign line comparison tools.
+//   3. Dispatch tools/call for compare, unique1, unique2, intersection, check_sort, and stats.
+//   4. Deliver streaming JSON-RPC responses over standard output.
+
+import "core/comm_types.oo";
+import "core/comm_engine.oo";
+import "render/comm_theme.oo";
+import "ipc/json_field.oo";
+
+fn build_error(id: String, code: Int, msg: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":" + to_string(code) + ",\"message\":\"" + json_escape(msg) + "\"}}\n";
+}
+
+fn build_tool_result(id: String, text: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(text) + "\"}]}}\n";
+}
+
+pub fn render_mcp_init(id: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"oocomm\",\"version\":\"0.2.0\"}}}\n";
+}
+
+pub fn render_mcp_tools_list(id: String) -> String {
+    let mut out: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":[";
+    out = out + "{\"name\":\"comm_compare\",\"description\":\"Compare two sorted multiline text streams producing 3-column diff output.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text1\":{\"type\":\"string\"},\"text2\":{\"type\":\"string\"},\"suppress_col1\":{\"type\":\"boolean\"},\"suppress_col2\":{\"type\":\"boolean\"},\"suppress_col3\":{\"type\":\"boolean\"},\"delimiter\":{\"type\":\"string\"}},\"required\":[\"text1\",\"text2\"]}},";
+    out = out + "{\"name\":\"comm_unique_file1\",\"description\":\"Extract lines unique to the first stream.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text1\":{\"type\":\"string\"},\"text2\":{\"type\":\"string\"}},\"required\":[\"text1\",\"text2\"]}},";
+    out = out + "{\"name\":\"comm_unique_file2\",\"description\":\"Extract lines unique to the second stream.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text1\":{\"type\":\"string\"},\"text2\":{\"type\":\"string\"}},\"required\":[\"text1\",\"text2\"]}},";
+    out = out + "{\"name\":\"comm_intersection\",\"description\":\"Extract common lines present in both streams.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text1\":{\"type\":\"string\"},\"text2\":{\"type\":\"string\"}},\"required\":[\"text1\",\"text2\"]}},";
+    out = out + "{\"name\":\"comm_check_sort\",\"description\":\"Verify if a multiline text stream is in lexicographical sorted order.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}},";
+    out = out + "{\"name\":\"comm_stats\",\"description\":\"Compute comparison metrics and unique line statistics in structured JSON.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text1\":{\"type\":\"string\"},\"text2\":{\"type\":\"string\"}},\"required\":[\"text1\",\"text2\"]}}";
+    out = out + "]}}\n";
+    return out;
+}
+
+pub fn handle_mcp_call(
+    id: String,
+    tool_name: String,
+    req: String
+) -> String {
+    let text1: String = extract_json_str(req, "text1");
+    let text2: String = extract_json_str(req, "text2");
+
+    if tool_name == "comm_compare" {
+        let sup1: Bool = extract_json_bool(req, "suppress_col1", false);
+        let sup2: Bool = extract_json_bool(req, "suppress_col2", false);
+        let sup3: Bool = extract_json_bool(req, "suppress_col3", false);
+        let delim_str: String = extract_json_str(req, "delimiter");
+        let delim: String = if chars_len(delim_str) == 0 { "\t" } else { delim_str };
+
+        let opts: CommOpts = make_comm_opts(sup1, sup2, sup3, delim, false, false, false);
+        let l1: List[String] = split_records(text1, false);
+        let l2: List[String] = split_records(text2, false);
+        let res: CommResult = compare_sorted_streams(l1, l2, opts);
+        return build_tool_result(id, res.output_text);
+    }
+
+    if tool_name == "comm_unique_file1" {
+        let opts: CommOpts = make_comm_opts(false, true, true, "\t", false, false, false);
+        let l1: List[String] = split_records(text1, false);
+        let l2: List[String] = split_records(text2, false);
+        let res: CommResult = compare_sorted_streams(l1, l2, opts);
+        return build_tool_result(id, res.output_text);
+    }
+
+    if tool_name == "comm_unique_file2" {
+        let opts: CommOpts = make_comm_opts(true, false, true, "\t", false, false, false);
+        let l1: List[String] = split_records(text1, false);
+        let l2: List[String] = split_records(text2, false);
+        let res: CommResult = compare_sorted_streams(l1, l2, opts);
+        return build_tool_result(id, res.output_text);
+    }
+
+    if tool_name == "comm_intersection" {
+        let opts: CommOpts = make_comm_opts(true, true, false, "\t", false, false, false);
+        let l1: List[String] = split_records(text1, false);
+        let l2: List[String] = split_records(text2, false);
+        let res: CommResult = compare_sorted_streams(l1, l2, opts);
+        return build_tool_result(id, res.output_text);
+    }
+
+    if tool_name == "comm_check_sort" {
+        let text: String = extract_json_str(req, "text");
+        let lines: List[String] = split_records(text, false);
+        let is_sorted: Bool = check_is_sorted(lines);
+        let out: String = if is_sorted { "{\"sorted\":true}\n" } else { "{\"sorted\":false}\n" };
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "comm_stats" {
+        let opts: CommOpts = make_comm_opts(false, false, false, "\t", false, false, false);
+        let l1: List[String] = split_records(text1, false);
+        let l2: List[String] = split_records(text2, false);
+        let res: CommResult = compare_sorted_streams(l1, l2, opts);
+        let json_out: String = render_json_telemetry(res, opts);
+        return build_tool_result(id, json_out);
+    }
+
+    return build_error(id, -32601, "Unknown tool: " + tool_name);
+}
+
+pub fn handle_mcp_message(req: String) -> String {
+    let id_str: String = extract_json_str(req, "id");
+    let id: String = if chars_len(id_str) > 0 { "\"" + id_str + "\"" } else { "1" };
+    let method: String = extract_json_str(req, "method");
+
+    if method == "initialize" {
+        return render_mcp_init(id);
+    }
+    if method == "notifications/initialized" {
+        return "";
+    }
+    if method == "tools/list" {
+        return render_mcp_tools_list(id);
+    }
+    if method == "tools/call" {
+        let tool_name: String = extract_json_str(req, "name");
+        return handle_mcp_call(id, tool_name, req);
+    }
+    if method == "shutdown" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}\n";
+    }
+    return build_error(id, -32601, "Method not found: " + method);
+}
+
+pub fn run_mcp_server(fs: &FsReadCap) {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 4096);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+                let mut nl_pos: Int = str_index_of(buf, "\n");
+                while nl_pos >= 0 {
+                    let line: String = str_slice(buf, 0, nl_pos);
+                    buf = str_slice(buf, nl_pos + 1, chars_len(buf));
+                    let trimmed: String = str_trim(line);
+                    if chars_len(trimmed) > 0 {
+                        let resp: String = handle_mcp_message(trimmed);
+                        if chars_len(resp) > 0 {
+                            print(resp);
+                        }
+                    }
+                    nl_pos = str_index_of(buf, "\n");
+                }
+            }
+        }
+    }
+}

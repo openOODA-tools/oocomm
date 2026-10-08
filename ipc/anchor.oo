@@ -1,0 +1,73 @@
+// # oocomm IPC Subsystem Verification Anchor
+//
+// Logline: Certifies JSON-RPC 2.0 stdio handling, CLI argument parsing, and tool dispatch.
+//
+// Setup: Validates protocol converters against deterministic JSON strings and CLI arguments.
+//
+// Beats:
+//   1. Assert JSON string escaping and unescaping fidelity.
+//   2. Assert JSON key/value extraction for strings and booleans.
+//   3. Assert CLI option parsing across compound flags and file targets.
+//   4. Assert MCP protocol handshakes and tool dispatch execution.
+
+import "core/comm_types.oo";
+import "core/comm_engine.oo";
+import "ipc/json_field.oo";
+import "ipc/comm_opts.oo";
+import "ipc/mcp_serve.oo";
+
+pub fn verify_ipc_subsystem(fs: &FsReadCap) -> Bool {
+    let esc: String = json_escape("test\"quotes\" and \\slashes\\");
+    if !str_contains(esc, "\\\"") || !str_contains(esc, "\\\\") {
+        return false;
+    }
+
+    let unesc: String = json_unescape("line1\\nline2");
+    if !str_contains(unesc, "\n") {
+        return false;
+    }
+
+    let sample_json: String = "{\"tool\":\"comm_compare\",\"suppress_col1\":true,\"suppress_col2\":false}";
+    let tool_val: String = extract_json_str(sample_json, "tool");
+    if tool_val != "comm_compare" {
+        return false;
+    }
+    let sup1_flag: Bool = extract_json_bool(sample_json, "suppress_col1", false);
+    if !sup1_flag {
+        return false;
+    }
+
+    let mut cli_args: List[String] = list_new();
+    cli_args = list_push(cli_args, "-12");
+    cli_args = list_push(cli_args, "--total");
+    cli_args = list_push(cli_args, "file1.txt");
+    cli_args = list_push(cli_args, "file2.txt");
+
+    let opts: CommCliOpts = parse_cli_args(cli_args);
+    if !opts.suppress_col1 || !opts.suppress_col2 || !opts.show_total {
+        return false;
+    }
+    if opts.file1_path != "file1.txt" || opts.file2_path != "file2.txt" {
+        return false;
+    }
+
+    let init_req: String = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"initialize\"}";
+    let init_resp: String = handle_mcp_message(init_req);
+    if !str_contains(init_resp, "\"protocolVersion\":\"2024-11-05\"") || !str_contains(init_resp, "oocomm") {
+        return false;
+    }
+
+    let list_req: String = "{\"jsonrpc\":\"2.0\",\"id\":\"2\",\"method\":\"tools/list\"}";
+    let list_resp: String = handle_mcp_message(list_req);
+    if !str_contains(list_resp, "comm_compare") || !str_contains(list_resp, "comm_intersection") {
+        return false;
+    }
+
+    let call_req: String = "{\"jsonrpc\":\"2.0\",\"id\":\"3\",\"method\":\"tools/call\",\"name\":\"comm_intersection\",\"text1\":\"apple\\nbanana\\n\",\"text2\":\"banana\\ncherry\\n\"}";
+    let call_resp: String = handle_mcp_message(call_req);
+    if !str_contains(call_resp, "banana") || str_contains(call_resp, "apple") {
+        return false;
+    }
+
+    return true;
+}

@@ -1,0 +1,87 @@
+// # oocomm Data Types Subsystem
+//
+// Logline: Data structures defining sorted line comparisons, column suppression, and metrics.
+//
+// Setup: Encapsulates 3-column diff states, sort validation flags, and telemetry records.
+//
+// Beats:
+//   1. Declare CommOpts encapsulating suppression flags and delimiters.
+//   2. Declare CommItem encapsulating line text and column classification.
+//   3. Declare CommStats encapsulating aggregate comparison counts.
+//   4. Declare CommResult encapsulating full comparison run.
+
+pub type CommOpts = struct {
+    suppress_col1: Bool,
+    suppress_col2: Bool,
+    suppress_col3: Bool,
+    delimiter: String,
+    check_order: Bool,
+    show_total: Bool,
+    zero_terminated: Bool
+};
+
+pub fn make_comm_opts(
+    sup1: Bool,
+    sup2: Bool,
+    sup3: Bool,
+    delim: String,
+    check_ord: Bool,
+    total: Bool,
+    zero_term: Bool
+) -> CommOpts {
+    let d: String = if chars_len(delim) == 0 { "\t" } else { delim };
+    return CommOpts {
+        suppress_col1: sup1,
+        suppress_col2: sup2,
+        suppress_col3: sup3,
+        delimiter: d,
+        check_order: check_ord,
+        show_total: total,
+        zero_terminated: zero_term
+    };
+}
+
+pub type CommItem = struct {
+    line: String,
+    column: Int
+};
+
+pub fn make_comm_item(line: String, col: Int) -> CommItem {
+    return CommItem { line: line, column: col };
+}
+
+pub type CommStats = struct {
+    unique_col1: Int,
+    unique_col2: Int,
+    common_col3: Int,
+    total_lines: Int,
+    order_errors: Int
+};
+
+pub fn make_comm_stats() -> CommStats {
+    return CommStats {
+        unique_col1: 0,
+        unique_col2: 0,
+        common_col3: 0,
+        total_lines: 0,
+        order_errors: 0
+    };
+}
+
+pub type CommResult = struct {
+    items: List[CommItem],
+    stats: CommStats,
+    output_text: String
+};
+
+pub fn make_comm_result(
+    items: List[CommItem],
+    stats: CommStats,
+    out: String
+) -> CommResult {
+    return CommResult {
+        items: items,
+        stats: stats,
+        output_text: out
+    };
+}

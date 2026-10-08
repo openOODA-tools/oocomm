@@ -1,0 +1,11 @@
+Package: oocomm
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Depends: libc6
+Description: LINE COMPARATOR
+ Compares two sorted files line by line to produce unique and common lines.
+ Capability-bounded openOODA utility with zero ambient authority,
+ column suppression, and native Model Context Protocol (MCP) surface.

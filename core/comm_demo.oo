@@ -1,0 +1,36 @@
+// # oocomm Demonstration Fixtures
+//
+// Logline: Synthetic sorted text streams and deterministic scenarios for line-by-line comparison.
+//
+// Setup: Supplies canonical sorted data corpora exercising 3-column splits and suppression modes.
+//
+// Beats:
+//   1. Build sorted fruit vocabulary fixture for stream 1.
+//   2. Build overlapping sorted fruit vocabulary fixture for stream 2.
+//   3. Execute demonstration comparison across both fixtures.
+//   4. Return deterministic CommResult for CLI demo and tests.
+
+import "core/comm_types.oo";
+import "core/comm_engine.oo";
+
+pub fn build_demo_file1() -> String {
+    return "apple\n"
+        + "banana\n"
+        + "cherry\n"
+        + "fig\n"
+        + "grape\n";
+}
+
+pub fn build_demo_file2() -> String {
+    return "banana\n"
+        + "date\n"
+        + "fig\n"
+        + "kiwi\n"
+        + "lemon\n";
+}
+
+pub fn run_demo_comparison(opts: CommOpts) -> CommResult {
+    let lines1: List[String] = split_records(build_demo_file1(), false);
+    let lines2: List[String] = split_records(build_demo_file2(), false);
+    return compare_sorted_streams(lines1, lines2, opts);
+}

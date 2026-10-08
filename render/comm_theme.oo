@@ -1,0 +1,45 @@
+// # oocomm Visual Formatting and Telemetry
+//
+// Logline: Formats terminal comparison cards, summary metrics, and JSON telemetry streams.
+//
+// Setup: Generates structured diagnostics and telemetry for CLI and MCP surfaces.
+//
+// Beats:
+//   1. Build formatted comparison breakdown card.
+//   2. Build total summary table.
+//   3. Generate structured JSON telemetry.
+//   4. Supply visual presentation helpers.
+
+import "core/comm_types.oo";
+
+pub fn render_comparison_card(res: CommResult) -> String {
+    let stats: CommStats = res.stats;
+    let mut out: String = "========================================================\n";
+    out = out + "               oocomm Stream Comparison                \n";
+    out = out + "========================================================\n";
+    out = out + "Unique to File 1 (Col 1): " + to_string(stats.unique_col1) + " lines\n";
+    out = out + "Unique to File 2 (Col 2): " + to_string(stats.unique_col2) + " lines\n";
+    out = out + "Common to Both   (Col 3): " + to_string(stats.common_col3) + " lines\n";
+    out = out + "--------------------------------------------------------\n";
+    out = out + "Total Distinct Lines:     " + to_string(stats.total_lines) + " lines\n";
+    out = out + "========================================================\n";
+    return out;
+}
+
+pub fn render_json_telemetry(res: CommResult, opts: CommOpts) -> String {
+    let stats: CommStats = res.stats;
+    let mut j: String = "{\"tool\":\"oocomm\",\"version\":\"0.2.0\",";
+    j = j + "\"config\":{";
+    j = j + "\"suppress_col1\":" + (if opts.suppress_col1 { "true" } else { "false" }) + ",";
+    j = j + "\"suppress_col2\":" + (if opts.suppress_col2 { "true" } else { "false" }) + ",";
+    j = j + "\"suppress_col3\":" + (if opts.suppress_col3 { "true" } else { "false" }) + ",";
+    j = j + "\"zero_terminated\":" + (if opts.zero_terminated { "true" } else { "false" });
+    j = j + "},";
+    j = j + "\"stats\":{";
+    j = j + "\"unique_col1\":" + to_string(stats.unique_col1) + ",";
+    j = j + "\"unique_col2\":" + to_string(stats.unique_col2) + ",";
+    j = j + "\"common_col3\":" + to_string(stats.common_col3) + ",";
+    j = j + "\"total_lines\":" + to_string(stats.total_lines);
+    j = j + "}}\n";
+    return j;
+}

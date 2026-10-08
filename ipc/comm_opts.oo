@@ -1,0 +1,112 @@
+// # oocomm Command Line Options Parser
+//
+// Logline: Parses command-line column suppression flags, sort check options, and stream paths.
+//
+// Setup: Decodes POSIX -1, -2, -3 switches, GNU long flags, and file paths with zero ambient authority.
+//
+// Beats:
+//   1. Declare CommCliOpts structure encapsulating file paths, suppression, and telemetry flags.
+//   2. Parse compound suppression switches (-12, -23, -13).
+//   3. Parse delimiter overrides, zero-terminated modes, and sort checking flags.
+//   4. Supply initialized default option records.
+
+pub type CommCliOpts = struct {
+    suppress_col1: Bool,
+    suppress_col2: Bool,
+    suppress_col3: Bool,
+    delimiter: String,
+    check_order: Bool,
+    show_total: Bool,
+    zero_terminated: Bool,
+    file1_path: String,
+    file2_path: String,
+    demo: Bool,
+    json: Bool,
+    inspect: Bool,
+    mcp: Bool,
+    help: Bool,
+    version: Bool
+};
+
+pub fn make_default_cli_opts() -> CommCliOpts {
+    return CommCliOpts {
+        suppress_col1: false,
+        suppress_col2: false,
+        suppress_col3: false,
+        delimiter: "\t",
+        check_order: true,
+        show_total: false,
+        zero_terminated: false,
+        file1_path: "",
+        file2_path: "",
+        demo: false,
+        json: false,
+        inspect: false,
+        mcp: false,
+        help: false,
+        version: false
+    };
+}
+
+pub fn parse_cli_args(args: List[String]) -> CommCliOpts {
+    let mut opts: CommCliOpts = make_default_cli_opts();
+    let num_args: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < num_args {
+        let arg: String = list_get(args, i);
+
+        if arg == "-h" || arg == "--help" {
+            opts.help = true;
+        } else if arg == "-V" || arg == "--version" {
+            opts.version = true;
+        } else if arg == "--mcp" {
+            opts.mcp = true;
+        } else if arg == "--demo" {
+            opts.demo = true;
+        } else if arg == "--json" {
+            opts.json = true;
+        } else if arg == "--inspect" {
+            opts.inspect = true;
+        } else if arg == "-1" {
+            opts.suppress_col1 = true;
+        } else if arg == "-2" {
+            opts.suppress_col2 = true;
+        } else if arg == "-3" {
+            opts.suppress_col3 = true;
+        } else if arg == "-12" || arg == "-21" {
+            opts.suppress_col1 = true;
+            opts.suppress_col2 = true;
+        } else if arg == "-13" || arg == "-31" {
+            opts.suppress_col1 = true;
+            opts.suppress_col3 = true;
+        } else if arg == "-23" || arg == "-32" {
+            opts.suppress_col2 = true;
+            opts.suppress_col3 = true;
+        } else if arg == "-123" {
+            opts.suppress_col1 = true;
+            opts.suppress_col2 = true;
+            opts.suppress_col3 = true;
+        } else if arg == "--check-order" {
+            opts.check_order = true;
+        } else if arg == "--nocheck-order" {
+            opts.check_order = false;
+        } else if arg == "--total" {
+            opts.show_total = true;
+        } else if arg == "-z" || arg == "--zero-terminated" {
+            opts.zero_terminated = true;
+        } else if str_starts_with(arg, "--output-delimiter=") {
+            opts.delimiter = str_slice(arg, 19, chars_len(arg));
+        } else if !str_starts_with(arg, "-") || arg == "-" {
+            if chars_len(opts.file1_path) == 0 {
+                opts.file1_path = arg;
+            } else if chars_len(opts.file2_path) == 0 {
+                opts.file2_path = arg;
+            }
+        }
+
+        i = i + 1;
+    }
+
+    return opts;
+}

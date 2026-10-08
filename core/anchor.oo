@@ -1,0 +1,65 @@
+// # oocomm Core Verification Anchor
+//
+// Logline: Verification anchor certifying sorted stream comparison, column suppression, and string collation.
+//
+// Setup: Validates comparison engine against mathematical invariants and POSIX fixtures.
+//
+// Beats:
+//   1. Assert byte-by-byte lexicographical collation semantics.
+//   2. Assert sorted order verification predicate.
+//   3. Assert three-column split counts against demo fixtures.
+//   4. Assert column suppression flags (-1, -2, -3).
+
+import "core/comm_types.oo";
+import "core/comm_engine.oo";
+import "core/comm_demo.oo";
+
+pub fn verify_core_subsystem() -> Bool {
+    // 1. Lexicographical comparison
+    if str_cmp("alpha", "beta") >= 0 { return false; }
+    if str_cmp("beta", "alpha") <= 0 { return false; }
+    if str_cmp("same", "same") != 0 { return false; }
+    if str_cmp("a", "aa") >= 0 { return false; }
+
+    // 2. Sort check
+    let mut sorted_list: List[String] = list_new();
+    sorted_list = list_push(sorted_list, "apple");
+    sorted_list = list_push(sorted_list, "banana");
+    sorted_list = list_push(sorted_list, "cherry");
+    if !check_is_sorted(sorted_list) { return false; }
+
+    let mut unsorted_list: List[String] = list_new();
+    unsorted_list = list_push(unsorted_list, "banana");
+    unsorted_list = list_push(unsorted_list, "apple");
+    if check_is_sorted(unsorted_list) { return false; }
+
+    // 3. Three-column split verification
+    let default_opts: CommOpts = make_comm_opts(false, false, false, "\t", true, false, false);
+    let r: CommResult = run_demo_comparison(default_opts);
+    let stats: CommStats = r.stats;
+    if stats.unique_col1 != 3 || stats.unique_col2 != 3 || stats.common_col3 != 2 || stats.total_lines != 8 {
+        return false;
+    }
+
+    // 4. Column suppression: -12 (keep only common column 3)
+    let sup12_opts: CommOpts = make_comm_opts(true, true, false, "\t", true, false, false);
+    let r12: CommResult = run_demo_comparison(sup12_opts);
+    if str_contains(r12.output_text, "apple") || str_contains(r12.output_text, "date") {
+        return false;
+    }
+    if !str_contains(r12.output_text, "banana") || !str_contains(r12.output_text, "fig") {
+        return false;
+    }
+
+    // 5. Column suppression: -3 (keep only differences)
+    let sup3_opts: CommOpts = make_comm_opts(false, false, true, "\t", true, false, false);
+    let r3: CommResult = run_demo_comparison(sup3_opts);
+    if str_contains(r3.output_text, "banana") || str_contains(r3.output_text, "fig") {
+        return false;
+    }
+    if !str_contains(r3.output_text, "apple") || !str_contains(r3.output_text, "date") {
+        return false;
+    }
+
+    return true;
+}

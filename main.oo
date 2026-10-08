@@ -1,52 +1,179 @@
 // # oocomm Main Entry Point
 //
-// Logline: Compares two sorted files line by line to produce unique and common lines.
+// Logline: Sovereign line comparator comparing two sorted files line by line to produce unique and common lines.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Demands explicit FsReadCap, ProcessCap, and EnvCap tokens under negative-trust boundaries.
 //
 // Beats:
 //   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oocomm operations.
-//   3. Format and output structured results to standard output.
+//   2. Ingest two input streams from filesystem paths or standard input.
+//   3. Validate lexicographical sort ordering when requested.
+//   4. Deliver three-column comparison output, inspection cards, or JSON telemetry.
 
-fn render_help() -> String {
-    return "oocomm 0.1.0 (openOODA sovereign diff & comparison)\n"
-        + "usage: oocomm [options] [ARGUMENTS]...\n\n"
-        + "Compares two sorted files line by line to produce unique and common lines.\n\n"
+import "core/comm_types.oo";
+import "core/comm_engine.oo";
+import "core/comm_demo.oo";
+import "render/comm_theme.oo";
+import "ipc/comm_opts.oo";
+import "ipc/mcp_serve.oo";
+import "anchor.oo";
+
+pub fn render_help() -> String {
+    return "oocomm 0.2.0 (openOODA sovereign line comparator)\n"
+        + "usage: oocomm [options] FILE1 FILE2\n\n"
+        + "Compare sorted files FILE1 and FILE2 line by line.\n\n"
+        + "With no options, produce three-column output. Column one contains\n"
+        + "lines unique to FILE1, column two contains lines unique to FILE2,\n"
+        + "and column three contains lines common to both files.\n\n"
         + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+        + "  -1                     suppress column 1 (lines unique to FILE1)\n"
+        + "  -2                     suppress column 2 (lines unique to FILE2)\n"
+        + "  -3                     suppress column 3 (lines that appear in both files)\n"
+        + "  --check-order          check that the input is correctly sorted [default]\n"
+        + "  --nocheck-order        do not check that the input is correctly sorted\n"
+        + "  --output-delimiter=STR separate columns with STR [default: TAB]\n"
+        + "  --total                output a summary at the end\n"
+        + "  -z, --zero-terminated  line delimiter is NUL, not newline\n"
+        + "      --inspect          display comparison summary breakdown\n"
+        + "      --demo             run demonstration with synthetic sorted fruit datasets\n"
+        + "      --json             output formatted as JSON telemetry\n"
+        + "  -h, --help             display this help and exit\n"
+        + "  -V, --version          output version information and exit\n"
+        + "      --mcp              run as Model Context Protocol stdio server\n";
 }
 
-fn render_version() -> String {
-    return "oocomm 0.1.0 (openOODA sovereign diff & comparison)\n";
+pub fn render_version() -> String {
+    return "oocomm 0.2.0 (openOODA sovereign line comparator)\n";
 }
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
+fn read_all_stdin(fs: &FsReadCap) -> String {
+    let mut acc: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 4096);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                acc = acc + chunk;
+            }
+        }
+    }
+    return acc;
+}
 
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oocomm\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+pub fn main(
+    fs: &FsReadCap,
+    _proc_cap: &ProcessCap,
+    _env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: CommCliOpts = parse_cli_args(args);
+
+    if opts.help {
+        print(render_help());
+        process_exit(0);
+        return Ok(0);
+    }
+    if opts.version {
+        print(render_version());
+        process_exit(0);
+        return Ok(0);
+    }
+    if opts.mcp {
+        run_mcp_server(fs);
+        process_exit(0);
+        return Ok(0);
     }
 
-    print("oocomm: sovereign capability-bounded utility ready\n");
-    return 0;
+    let comm_opts: CommOpts = make_comm_opts(
+        opts.suppress_col1,
+        opts.suppress_col2,
+        opts.suppress_col3,
+        opts.delimiter,
+        opts.check_order,
+        opts.show_total,
+        opts.zero_terminated
+    );
+
+    if opts.demo {
+        let demo_res: CommResult = run_demo_comparison(comm_opts);
+        if opts.json {
+            print(render_json_telemetry(demo_res, comm_opts));
+        } else if opts.inspect {
+            print(render_comparison_card(demo_res));
+        } else {
+            print(demo_res.output_text);
+        }
+        process_exit(0);
+        return Ok(0);
+    }
+
+    if chars_len(opts.file1_path) == 0 || chars_len(opts.file2_path) == 0 {
+        print(render_help());
+        process_exit(0);
+        return Ok(0);
+    }
+
+    let mut content1: String = "";
+    if opts.file1_path == "-" {
+        content1 = read_all_stdin(fs);
+    } else {
+        let r1: Result[String, String] = read_file(fs, opts.file1_path);
+        if !r1.is_ok() {
+            print("oocomm: cannot open '" + opts.file1_path + "' for reading\n");
+            process_exit(1);
+            return Ok(1);
+        }
+        content1 = match r1 { Ok(s) => s, Err(_) => "" };
+    }
+
+    let mut content2: String = "";
+    if opts.file2_path == "-" {
+        content2 = read_all_stdin(fs);
+    } else {
+        let r2: Result[String, String] = read_file(fs, opts.file2_path);
+        if !r2.is_ok() {
+            print("oocomm: cannot open '" + opts.file2_path + "' for reading\n");
+            process_exit(1);
+            return Ok(1);
+        }
+        content2 = match r2 { Ok(s) => s, Err(_) => "" };
+    }
+
+    let lines1: List[String] = split_records(content1, opts.zero_terminated);
+    let lines2: List[String] = split_records(content2, opts.zero_terminated);
+
+    if opts.check_order {
+        if !check_is_sorted(lines1) {
+            print("oocomm: file 1 is not in sorted order\n");
+            process_exit(1);
+            return Ok(1);
+        }
+        if !check_is_sorted(lines2) {
+            print("oocomm: file 2 is not in sorted order\n");
+            process_exit(1);
+            return Ok(1);
+        }
+    }
+
+    let res: CommResult = compare_sorted_streams(lines1, lines2, comm_opts);
+
+    if opts.json {
+        print(render_json_telemetry(res, comm_opts));
+        process_exit(0);
+        return Ok(0);
+    }
+    if opts.inspect {
+        print(render_comparison_card(res));
+        process_exit(0);
+        return Ok(0);
+    }
+
+    print(res.output_text);
+    process_exit(0);
+    return Ok(0);
 }
